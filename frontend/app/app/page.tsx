@@ -244,7 +244,7 @@ export default function AppPage() {
         </div>
       </main>
       <nav className="mobile-nav">
-        {menu.slice(0, 5).map((item) => (
+        {menu.map((item) => (
           <button
             key={item.id}
             className={view === item.id ? "active" : ""}
