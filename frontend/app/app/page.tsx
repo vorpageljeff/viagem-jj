@@ -64,12 +64,20 @@ export default function AppPage() {
     { id: number; name: string; participant_ids: number[] }[]
   >([]);
   const [loading, setLoading] = useState(true);
+  const [hasNoTrips, setHasNoTrips] = useState(false);
   const [toast, setToast] = useState("");
   const [error, setError] = useState("");
   const load = useCallback(async () => {
+    setError("");
     try {
       const trips = await api<Trip[]>("/trips");
-      if (!trips.length) throw new Error("Nenhuma viagem disponível");
+      if (!trips.length) {
+        setHasNoTrips(true);
+        setTrip(null);
+        setDashboard(null);
+        return;
+      }
+      setHasNoTrips(false);
       const current = trips[0];
       setTrip(current);
       const base = `/trips/${current.id}`;
@@ -118,6 +126,15 @@ export default function AppPage() {
   }
   if (loading)
     return <div className="loading">Carregando os detalhes da viagem…</div>;
+  if (hasNoTrips)
+    return (
+      <FirstTripView
+        onCreated={async () => {
+          setLoading(true);
+          await load();
+        }}
+      />
+    );
   if (error || !trip || !dashboard)
     return (
       <div className="loading">
@@ -250,6 +267,69 @@ export default function AppPage() {
       )}{" "}
       {toast && <Toast message={toast} onClose={() => setToast("")} />}
     </div>
+  );
+}
+
+function FirstTripView({ onCreated }: { onCreated: () => Promise<void> }) {
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSaving(true);
+    setError("");
+    const form = new FormData(event.currentTarget);
+    try {
+      await api<Trip>("/trips", {
+        method: "POST",
+        body: JSON.stringify({
+          name: String(form.get("name") || ""),
+          destination: String(form.get("destination") || ""),
+          start_date: String(form.get("start_date") || ""),
+          end_date: String(form.get("end_date") || ""),
+          status: "PLANNING",
+          description: String(form.get("description") || "") || null,
+        }),
+      });
+      await onCreated();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Não foi possível criar a viagem");
+      setSaving(false);
+    }
+  }
+
+  return (
+    <main className="first-trip-page">
+      <section className="first-trip-card">
+        <div className="first-trip-header">
+          <div className="brand">
+            <span className="brand-mark">B</span>
+            <span>Bora!</span>
+          </div>
+          <button className="secondary" type="button" onClick={logout}>
+            Sair
+          </button>
+        </div>
+        <span className="eyebrow">PRIMEIROS PASSOS</span>
+        <h1>Crie sua primeira viagem</h1>
+        <p className="muted">
+          Os dados de demonstração foram removidos. Comece com as informações reais da sua viagem.
+        </p>
+        <form className="form-grid first-trip-form" onSubmit={submit}>
+          <Field name="name" label="Nome da viagem" placeholder="Ex.: Férias em família" required />
+          <Field name="destination" label="Destino" placeholder="Ex.: Florianópolis - SC" required />
+          <Field name="start_date" label="Data de início" type="date" required />
+          <Field name="end_date" label="Data de término" type="date" required />
+          <Field name="description" label="Descrição (opcional)" wide />
+          {error && <div className="form-error field wide">{error}</div>}
+          <div className="form-actions">
+            <button className="primary" disabled={saving}>
+              {saving ? "Criando…" : "Criar viagem"}
+            </button>
+          </div>
+        </form>
+      </section>
+    </main>
   );
 }
 
