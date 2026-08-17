@@ -31,7 +31,7 @@ frontend (Next.js/TypeScript) → API REST (FastAPI/Pydantic)
 - Docker Compose para desenvolvimento
 - Frontend preparado para Vercel; API preparada para Render; banco compatível com Supabase PostgreSQL
 
-JWT foi escolhido no MVP por reduzir configuração externa. Em produção, troque `JWT_SECRET`, use HTTPS e considere Supabase Auth quando o fluxo exigir convite, recuperação de senha e provedores sociais.
+JWT foi escolhido no MVP por reduzir configuração externa. Em produção, use um `JWT_SECRET` aleatório, HTTPS e uma senha administrativa forte. Considere Supabase Auth quando o fluxo exigir convite, recuperação de senha e provedores sociais.
 
 ## Banco e regras principais
 
@@ -144,17 +144,16 @@ O Swagger em `/docs` contém os contratos e validações atualizados.
 
 ### Render
 
-1. Crie um Web Service apontando para `backend` ou use o `backend/Dockerfile`.
-2. Configure `DATABASE_URL`, `JWT_SECRET` e `CORS_ORIGINS=https://seu-app.vercel.app`.
-3. Com runtime Python, use build `pip install -r requirements.txt` e start `alembic upgrade head && python -m app.seed && uvicorn app.main:app --host 0.0.0.0 --port $PORT`.
+1. Crie um Blueprint a partir do `render.yaml` da raiz.
+2. Informe `DATABASE_URL` com a conexão direta do Neon e escolha uma senha forte para `SEED_ADMIN_PASSWORD`.
+3. O Blueprint cria um Web Service gratuito, gera `JWT_SECRET`, executa migrations e cria os dados iniciais de forma idempotente.
 
-### Supabase PostgreSQL
+### Neon PostgreSQL
 
-1. Crie o projeto e copie a connection string PostgreSQL em **Project Settings → Database**.
+1. Crie um projeto gratuito e copie a connection string direta.
 2. Troque o prefixo para `postgresql+psycopg://` se necessário.
-3. Defina o resultado como `DATABASE_URL` no Render.
-4. Prefira a conexão pooled para a aplicação e a conexão direta para migrations, se o plano disponibilizar ambas.
-5. Execute `alembic upgrade head` antes do primeiro acesso.
+3. Defina o resultado como `DATABASE_URL` durante a criação do Blueprint no Render.
+4. O container executa `alembic upgrade head` antes de iniciar a API.
 
 ## Escopo entregue e próxima fase
 

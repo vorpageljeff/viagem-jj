@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: viagem-jj-api
+    runtime: docker
+    plan: free
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: CORS_ORIGINS
+        value: https://viagem-jj.vercel.app
+      - key: SEED_DEMO_DATA
+        value: true
+      - key: SEED_ADMIN_EMAIL
+        value: admin@viagem.com
+      - key: SEED_ADMIN_PASSWORD
+        sync: false
