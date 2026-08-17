@@ -28,11 +28,45 @@ def commit(db: Session, obj):
 def token_for(user: User):
     return {"access_token": create_access_token(user.id), "token_type": "bearer", "user": {"id": user.id, "name": user.name, "email": user.email}}
 
+def user_by_email(db: Session, email: str) -> User | None:
+    return db.query(User).filter(func.lower(User.email) == email.lower()).first()
+
+def link_participant_account(db: Session, participant: Participant, user: User) -> TripMember:
+    member = db.query(TripMember).filter_by(trip_id=participant.trip_id, user_id=user.id).first()
+    if not member:
+        member = TripMember(
+            trip_id=participant.trip_id,
+            user_id=user.id,
+            role=Role.PARTICIPANT,
+            participant_id=participant.id,
+        )
+        db.add(member)
+    elif member.participant_id is None:
+        member.participant_id = participant.id
+    return member
+
 @router.post("/auth/register", status_code=201)
 def register(data: Register, db: Session = Depends(get_db)):
-    if db.query(User).filter(func.lower(User.email) == data.email.lower()).first():
+    if user_by_email(db, data.email):
         raise HTTPException(409, "E-mail já cadastrado")
-    return token_for(commit(db, User(name=data.name, email=data.email.lower(), phone=data.phone, hashed_password=hash_password(data.password))))
+    invitations = db.query(Participant).filter(func.lower(Participant.email) == data.email.lower()).all()
+    if not invitations:
+        raise HTTPException(403, "Este e-mail ainda não foi convidado para uma viagem")
+
+    user = User(
+        name=data.name,
+        email=data.email.lower(),
+        phone=data.phone,
+        hashed_password=hash_password(data.password),
+    )
+    db.add(user)
+    db.flush()
+    invitations_by_trip = {participant.trip_id: participant for participant in invitations}
+    for participant in invitations_by_trip.values():
+        link_participant_account(db, participant, user)
+    db.commit()
+    db.refresh(user)
+    return token_for(user)
 
 @router.post("/auth/login")
 def login(data: Login, db: Session = Depends(get_db)):
@@ -60,6 +94,14 @@ def create_trip(data: TripIn, user: User = Depends(current_user), db: Session = 
 def get_trip(trip_id: int, _=Depends(trip_member), db: Session = Depends(get_db)):
     return get_or_404(db, Trip, trip_id)
 
+@router.get("/trips/{trip_id}/membership")
+def get_membership(member: TripMember = Depends(trip_member)):
+    return {
+        "role": member.role,
+        "participant_id": member.participant_id,
+        "can_manage": member.role in (Role.ADMIN, Role.ORGANIZER),
+    }
+
 @router.put("/trips/{trip_id}")
 def update_trip(trip_id: int, data: TripIn, _=Depends(trip_manager), db: Session = Depends(get_db)):
     trip = get_or_404(db, Trip, trip_id)
@@ -71,17 +113,25 @@ def list_participants(trip_id: int, _=Depends(trip_member), db: Session = Depend
     result=[]
     for participant in db.query(Participant).filter_by(trip_id=trip_id).order_by(Participant.name).all():
         groups=[g.name for g in db.query(Group).join(Group.participants).filter(Participant.id == participant.id).all()]
-        result.append({"id":participant.id,"trip_id":trip_id,"name":participant.name,"email":participant.email,"phone":participant.phone,"participant_type":participant.participant_type,"status":participant.status,"notes":participant.notes,"groups":groups,**participant_balance(db, participant.id)})
+        has_account=db.query(TripMember).filter_by(trip_id=trip_id,participant_id=participant.id).first() is not None
+        result.append({"id":participant.id,"trip_id":trip_id,"name":participant.name,"email":participant.email,"phone":participant.phone,"participant_type":participant.participant_type,"status":participant.status,"notes":participant.notes,"groups":groups,"has_account":has_account,**participant_balance(db, participant.id)})
     return result
 
 @router.post("/trips/{trip_id}/participants", status_code=201)
 def create_participant(trip_id: int, data: ParticipantIn, _=Depends(trip_manager), db: Session = Depends(get_db)):
-    return commit(db, Participant(trip_id=trip_id, **data.model_dump()))
+    participant=Participant(trip_id=trip_id, **data.model_dump());db.add(participant);db.flush()
+    if participant.email:
+        account=user_by_email(db,participant.email)
+        if account:link_participant_account(db,participant,account)
+    db.commit();db.refresh(participant);return participant
 
 @router.put("/trips/{trip_id}/participants/{participant_id}")
 def update_participant(trip_id: int, participant_id: int, data: ParticipantIn, _=Depends(trip_manager), db: Session = Depends(get_db)):
     participant=get_or_404(db, Participant, participant_id, trip_id)
     for key,value in data.model_dump().items(): setattr(participant,key,value)
+    if participant.email:
+        account=user_by_email(db,participant.email)
+        if account:link_participant_account(db,participant,account)
     return commit(db,participant)
 
 @router.get("/trips/{trip_id}/participants/{participant_id}/withdrawal-preview")
@@ -147,7 +197,9 @@ def create_scenario(trip_id:int,data:ScenarioIn,_=Depends(trip_manager),db:Sessi
     values=data.model_dump(exclude={"accommodation_ids"});s=AccommodationScenario(trip_id=trip_id,**values,accommodations=accommodations);commit(db,s);return scenario_json(db,s)
 
 @router.put("/trips/{trip_id}/scenarios/{scenario_id}/vote")
-def vote_scenario(trip_id:int,scenario_id:int,data:VoteIn,_=Depends(trip_member),db:Session=Depends(get_db)):
+def vote_scenario(trip_id:int,scenario_id:int,data:VoteIn,member:TripMember=Depends(trip_member),db:Session=Depends(get_db)):
+    if member.role == Role.PARTICIPANT and member.participant_id != data.participant_id:
+        raise HTTPException(403,"Você só pode registrar o próprio voto")
     scenario=get_or_404(db,AccommodationScenario,scenario_id,trip_id);get_or_404(db,Participant,data.participant_id,trip_id);record=db.query(ScenarioVote).filter_by(scenario_id=scenario.id,participant_id=data.participant_id).first()
     if record:record.vote=data.vote
     else:record=ScenarioVote(scenario_id=scenario.id,participant_id=data.participant_id,vote=data.vote)

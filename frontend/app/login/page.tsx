@@ -1,6 +1,7 @@
 "use client";
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { login } from "@/lib/api";
 
 export default function LoginPage() {
@@ -80,6 +81,9 @@ export default function LoginPage() {
               {loading ? "Entrando…" : "Entrar na viagem →"}
             </button>
           </form>
+          <p className="auth-switch">
+            Primeira vez por aqui? <Link href="/cadastro">Criar meu acesso</Link>
+          </p>
         </div>
       </section>
     </main>

@@ -8,8 +8,11 @@ class ORMModel(BaseModel):
 
 class Login(BaseModel):
     email: EmailStr; password: str
-class Register(Login):
-    name: str = Field(min_length=2, max_length=120); phone: str | None = None
+class Register(BaseModel):
+    name: str = Field(min_length=2, max_length=120)
+    email: EmailStr
+    password: str = Field(min_length=8, max_length=72)
+    phone: str | None = None
 class Token(BaseModel):
     access_token: str; token_type: str = "bearer"; user: dict
 
@@ -53,4 +56,3 @@ class MemberIds(BaseModel):
     participant_ids: list[int]
 class LinkParticipant(BaseModel):
     participant_id: int; allow_over_capacity: bool = False
-

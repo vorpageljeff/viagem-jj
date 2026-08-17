@@ -7,6 +7,7 @@ import type {
   Accommodation,
   Dashboard,
   Expense,
+  Membership,
   Participant,
   Payment,
   Scenario,
@@ -55,6 +56,7 @@ export default function AppPage() {
   const [modal, setModal] = useState<ModalType>(null);
   const [trip, setTrip] = useState<Trip | null>(null);
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
+  const [membership, setMembership] = useState<Membership | null>(null);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [stays, setStays] = useState<Accommodation[]>([]);
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
@@ -81,7 +83,8 @@ export default function AppPage() {
       const current = trips[0];
       setTrip(current);
       const base = `/trips/${current.id}`;
-      const [d, p, a, s, e, pa, g] = await Promise.all([
+      const [m, d, p, a, s, e, pa, g] = await Promise.all([
+        api<Membership>(`${base}/membership`),
         api<Dashboard>(`${base}/dashboard`),
         api<Participant[]>(`${base}/participants`),
         api<Accommodation[]>(`${base}/accommodations`),
@@ -92,6 +95,7 @@ export default function AppPage() {
           `${base}/groups`,
         ),
       ]);
+      setMembership(m);
       setDashboard(d);
       setParticipants(p);
       setStays(a);
@@ -135,7 +139,7 @@ export default function AppPage() {
         }}
       />
     );
-  if (error || !trip || !dashboard)
+  if (error || !trip || !dashboard || !membership)
     return (
       <div className="loading">
         <h2>Não foi possível abrir a viagem</h2>
@@ -148,6 +152,14 @@ export default function AppPage() {
   const user = JSON.parse(
     localStorage.getItem("trip_user") || '{"name":"Viajante"}',
   );
+  const currentParticipant = participants.find(
+    (participant) => participant.id === membership.participant_id,
+  );
+  const roleLabel = membership.role === "ADMIN"
+    ? "Administrador"
+    : membership.role === "ORGANIZER"
+      ? "Organizador"
+      : "Participante";
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -172,7 +184,7 @@ export default function AppPage() {
             <span className="avatar">{user.name[0]}</span>
             <div>
               <strong>{user.name}</strong>
-              <small>Administrador</small>
+              <small>{roleLabel}</small>
             </div>
           </div>
           <button className="logout" onClick={logout}>
@@ -203,24 +215,27 @@ export default function AppPage() {
               data={dashboard}
               trip={trip}
               expenses={expenses}
-              onAction={setModal}
+              participant={membership.can_manage ? undefined : currentParticipant}
+              onAction={membership.can_manage ? setModal : undefined}
             />
           )}
           {view === "people" && (
             <PeopleView
               participants={participants}
               groups={groups}
-              onAction={setModal}
+              onAction={membership.can_manage ? setModal : undefined}
             />
           )}
-          {view === "stays" && <StaysView stays={stays} onAction={setModal} />}
+          {view === "stays" && (
+            <StaysView stays={stays} onAction={membership.can_manage ? setModal : undefined} />
+          )}
           {view === "scenarios" && (
             <ScenariosView
               scenarios={scenarios}
               tripId={trip.id}
-              participantId={participants[0]?.id}
+              participantId={membership.participant_id ?? undefined}
               reload={load}
-              onAction={setModal}
+              onAction={membership.can_manage ? setModal : undefined}
             />
           )}
           {view === "finance" && (
@@ -228,18 +243,18 @@ export default function AppPage() {
               expenses={expenses}
               participants={participants}
               dashboard={dashboard}
-              onAction={setModal}
+              onAction={membership.can_manage ? setModal : undefined}
             />
           )}
           {view === "payments" && (
             <PaymentsView
               payments={payments}
               participants={participants}
-              onAction={setModal}
+              onAction={membership.can_manage ? setModal : undefined}
             />
           )}
           {view === "settings" && (
-            <SettingsView trip={trip} onAction={setModal} />
+            <SettingsView trip={trip} onAction={membership.can_manage ? setModal : undefined} />
           )}
         </div>
       </main>
@@ -255,7 +270,7 @@ export default function AppPage() {
           </button>
         ))}
       </nav>
-      {modal && (
+      {modal && membership.can_manage && (
         <ActionModal
           type={modal}
           trip={trip}
@@ -390,12 +405,14 @@ function DashboardView({
   data,
   trip,
   expenses,
+  participant,
   onAction,
 }: {
   data: Dashboard;
   trip: Trip;
   expenses: Expense[];
-  onAction: (m: ModalType) => void;
+  participant?: Participant;
+  onAction?: (m: ModalType) => void;
 }) {
   const categories = Object.entries(data.expenses_by_category).sort(
     (a, b) => b[1] - a[1],
@@ -406,29 +423,26 @@ function DashboardView({
       <Heading
         eyebrow="VISÃO GERAL"
         title={`Olá, ${JSON.parse(localStorage.getItem("trip_user") || '{"name":"viajante"}').name.split(" ")[0]}!`}
-        description={`Faltam ${Math.ceil((new Date(trip.start_date).getTime() - Date.now()) / 86400000)} dias. Veja como estão os preparativos.`}
-        button="Nova despesa"
-        onClick={() => onAction("expense")}
+        description={participant
+          ? "Acompanhe sua situação e as decisões da viagem."
+          : `Faltam ${Math.ceil((new Date(trip.start_date).getTime() - Date.now()) / 86400000)} dias. Veja como estão os preparativos.`}
+        button={onAction ? "Nova despesa" : undefined}
+        onClick={() => onAction?.("expense")}
       />
       <div className="cards">
-        <Metric
-          label="Participantes"
-          value={`${data.participants.confirmed} / ${data.participants.total}`}
-          note="confirmados na viagem"
-          tint="#dceff2"
-        />
-        <Metric
-          label="Orçamento estimado"
-          value={money(data.budget.estimated)}
-          note={`${money(data.budget.actual)} já realizados`}
-          tint="#f3eadb"
-        />
-        <Metric
-          label="Recebido"
-          value={money(data.payments.received)}
-          note={`${money(data.payments.pending)} a receber`}
-          tint="#d9eee8"
-        />
+        {participant ? (
+          <>
+            <Metric label="Meu saldo" value={money(participant.balance)} note="saldo individual" tint="#dceff2" />
+            <Metric label="Minha parte" value={money(participant.total_due)} note="total devido" tint="#f3eadb" />
+            <Metric label="Pago por mim" value={money(participant.total_paid)} note="pagamentos confirmados" tint="#d9eee8" />
+          </>
+        ) : (
+          <>
+            <Metric label="Participantes" value={`${data.participants.confirmed} / ${data.participants.total}`} note="confirmados na viagem" tint="#dceff2" />
+            <Metric label="Orçamento estimado" value={money(data.budget.estimated)} note={`${money(data.budget.actual)} já realizados`} tint="#f3eadb" />
+            <Metric label="Recebido" value={money(data.payments.received)} note={`${money(data.payments.pending)} a receber`} tint="#d9eee8" />
+          </>
+        )}
         <Metric
           label="Cenários"
           value={String(data.scenarios)}
@@ -497,7 +511,7 @@ function PeopleView({
 }: {
   participants: Participant[];
   groups: { id: number; name: string; participant_ids: number[] }[];
-  onAction: (m: ModalType) => void;
+  onAction?: (m: ModalType) => void;
 }) {
   const [query, setQuery] = useState("");
   const list = participants.filter((p) =>
@@ -509,8 +523,8 @@ function PeopleView({
         eyebrow="ORGANIZAÇÃO"
         title="Pessoas e grupos"
         description="Um cadastro por pessoa, todos os vínculos preservados."
-        button="Adicionar pessoa"
-        onClick={() => onAction("participant")}
+        button={onAction ? "Adicionar pessoa" : undefined}
+        onClick={() => onAction?.("participant")}
       />
       <div className="toolbar">
         <input
@@ -519,9 +533,11 @@ function PeopleView({
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
-        <button className="secondary" onClick={() => onAction("group")}>
-          ＋ Criar grupo
-        </button>
+        {onAction && (
+          <button className="secondary" onClick={() => onAction("group")}>
+            ＋ Criar grupo
+          </button>
+        )}
         {groups.map((g) => (
           <Badge key={g.id} tone="blue">
             {g.name} · {g.participant_ids.length}
@@ -538,6 +554,7 @@ function PeopleView({
               <th>Pago</th>
               <th>Saldo</th>
               <th>Status</th>
+              <th>Acesso</th>
             </tr>
           </thead>
           <tbody>
@@ -572,6 +589,11 @@ function PeopleView({
                     {statusLabel[p.status] || p.status}
                   </Badge>
                 </td>
+                <td>
+                  <Badge tone={p.has_account ? "good" : "warn"}>
+                    {p.has_account ? "Conta ativa" : p.email ? "Aguardando cadastro" : "Sem e-mail"}
+                  </Badge>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -586,7 +608,7 @@ function StaysView({
   onAction,
 }: {
   stays: Accommodation[];
-  onAction: (m: ModalType) => void;
+  onAction?: (m: ModalType) => void;
 }) {
   return (
     <section>
@@ -594,8 +616,8 @@ function StaysView({
         eyebrow="ONDE FICAR"
         title="Hospedagens candidatas"
         description="Compare espaço, localização e custo antes de decidir."
-        button="Nova hospedagem"
-        onClick={() => onAction("stay")}
+        button={onAction ? "Nova hospedagem" : undefined}
+        onClick={() => onAction?.("stay")}
       />
       <div className="card-grid">
         {stays.map((stay) => (
@@ -652,7 +674,7 @@ function ScenariosView({
   tripId: number;
   participantId?: number;
   reload: () => Promise<void>;
-  onAction: (m: ModalType) => void;
+  onAction?: (m: ModalType) => void;
 }) {
   async function vote(id: number, value: string) {
     if (!participantId) return;
@@ -668,8 +690,8 @@ function ScenariosView({
         eyebrow="DECISÃO EM GRUPO"
         title="Comparador de cenários"
         description="Capacidade, estrutura, custo e votos lado a lado."
-        button="Novo cenário"
-        onClick={() => onAction("scenario")}
+        button={onAction ? "Novo cenário" : undefined}
+        onClick={() => onAction?.("scenario")}
       />
       <div className="card-grid">
         {scenarios.map((s, index) => (
@@ -703,7 +725,7 @@ function ScenariosView({
                 <span>BANHEIROS</span>
               </div>
             </div>
-            <div className="votes">
+            {participantId && <div className="votes">
               <button className="vote" onClick={() => vote(s.id, "YES")}>
                 👍 {s.votes.YES} sim
               </button>
@@ -713,7 +735,7 @@ function ScenariosView({
               <button className="vote" onClick={() => vote(s.id, "NO")}>
                 👎 {s.votes.NO} não
               </button>
-            </div>
+            </div>}
           </article>
         ))}
       </div>
@@ -730,7 +752,7 @@ function FinanceView({
   expenses: Expense[];
   participants: Participant[];
   dashboard: Dashboard;
-  onAction: (m: ModalType) => void;
+  onAction?: (m: ModalType) => void;
 }) {
   return (
     <section>
@@ -738,8 +760,8 @@ function FinanceView({
         eyebrow="CONTROLE FINANCEIRO"
         title="Despesas e rateios"
         description="Todos os cálculos acontecem no servidor e fecham até o último centavo."
-        button="Nova despesa"
-        onClick={() => onAction("expense")}
+        button={onAction ? "Nova despesa" : undefined}
+        onClick={() => onAction?.("expense")}
       />
       <div className="cards" style={{ marginBottom: 18 }}>
         <Metric
@@ -810,7 +832,7 @@ function PaymentsView({
 }: {
   payments: Payment[];
   participants: Participant[];
-  onAction: (m: ModalType) => void;
+  onAction?: (m: ModalType) => void;
 }) {
   const names = Object.fromEntries(participants.map((p) => [p.id, p.name]));
   return (
@@ -819,8 +841,8 @@ function PaymentsView({
         eyebrow="CAIXA DA VIAGEM"
         title="Pagamentos"
         description="Entradas confirmadas, pendências e comprovantes em um lugar."
-        button="Registrar pagamento"
-        onClick={() => onAction("payment")}
+        button={onAction ? "Registrar pagamento" : undefined}
+        onClick={() => onAction?.("payment")}
       />
       <div className="table-wrap">
         <table>
@@ -865,7 +887,7 @@ function SettingsView({
   onAction,
 }: {
   trip: Trip;
-  onAction: (m: ModalType) => void;
+  onAction?: (m: ModalType) => void;
 }) {
   return (
     <section>
@@ -873,8 +895,8 @@ function SettingsView({
         eyebrow="CONFIGURAÇÕES"
         title="Dados da viagem"
         description="Informações gerais usadas em todo o sistema."
-        button="Editar viagem"
-        onClick={() => onAction("trip")}
+        button={onAction ? "Editar viagem" : undefined}
+        onClick={() => onAction?.("trip")}
       />
       <article className="panel">
         <div className="form-grid">
