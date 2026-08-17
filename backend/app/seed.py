@@ -1,5 +1,6 @@
 from datetime import date
 from decimal import Decimal
+from app.core.config import settings
 from app.core.security import hash_password
 from app.database.session import SessionLocal
 from app.models import (Accommodation, AccommodationScenario, AllocationType, BudgetItem, Expense, ExpenseCategory, Group,
@@ -10,11 +11,18 @@ from app.services.finance import recalculate_allocations
 NAMES = ["Jefferson Santos","Ana Santos","Bruno Lima","Carla Lima","Diego Alves","Elisa Alves","Felipe Rocha","Gabriela Rocha","Henrique Melo","Isabela Melo","João Costa","Karen Costa","Lucas Martins","Marina Martins","Nicolas Souza","Olívia Souza","Paulo Nunes","Renata Nunes","Samuel Reis","Talita Reis"]
 
 def run_seed():
+    if not settings.seed_demo_data:
+        return
+    if not settings.seed_admin_email or not settings.seed_admin_password:
+        raise RuntimeError("SEED_ADMIN_EMAIL e SEED_ADMIN_PASSWORD são obrigatórios para executar o seed")
+    if len(settings.seed_admin_password) < 12:
+        raise RuntimeError("SEED_ADMIN_PASSWORD deve ter pelo menos 12 caracteres")
+
     db=SessionLocal()
     try:
-        user=db.query(User).filter_by(email="admin@viagem.com").first()
+        user=db.query(User).filter_by(email=settings.seed_admin_email.lower()).first()
         if not user:
-            user=User(name="Jefferson Santos",email="admin@viagem.com",phone="(48) 99999-0000",hashed_password=hash_password("viagem2026"));db.add(user);db.flush()
+            user=User(name="Jefferson Santos",email=settings.seed_admin_email.lower(),phone="(48) 99999-0000",hashed_password=hash_password(settings.seed_admin_password));db.add(user);db.flush()
         trip=db.query(Trip).filter_by(name="Garopaba Réveillon 2026/2027").first()
         if trip:return
         trip=Trip(name="Garopaba Réveillon 2026/2027",destination="Garopaba - SC",start_date=date(2026,12,26),end_date=date(2027,1,3),status=TripStatus.PLANNING,description="Oito dias para começar 2027 perto do mar.",created_by=user.id);db.add(trip);db.flush();member=TripMember(trip_id=trip.id,user_id=user.id,role=Role.ADMIN);db.add(member)

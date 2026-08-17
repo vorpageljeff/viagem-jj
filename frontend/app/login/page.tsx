@@ -5,8 +5,8 @@ import { login } from "@/lib/api";
 
 export default function LoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState("admin@viagem.com");
-  const [password, setPassword] = useState("viagem2026");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   async function submit(event: FormEvent) {
@@ -80,10 +80,6 @@ export default function LoginPage() {
               {loading ? "Entrando…" : "Entrar na viagem →"}
             </button>
           </form>
-          <div className="demo-note">
-            <strong>Acesso de demonstração</strong>
-            <span>admin@viagem.com · viagem2026</span>
-          </div>
         </div>
       </section>
     </main>

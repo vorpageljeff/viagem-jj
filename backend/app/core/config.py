@@ -7,6 +7,9 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 1440
     cors_origins: str = "http://localhost:3000"
+    seed_demo_data: bool = False
+    seed_admin_email: str | None = None
+    seed_admin_password: str | None = None
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     @property
@@ -18,4 +21,3 @@ def get_settings() -> Settings:
     return Settings()
 
 settings = get_settings()
-
