@@ -18,6 +18,12 @@ export type Participant = {
   total_due: number;
   total_paid: number;
   balance: number;
+  has_account: boolean;
+};
+export type Membership = {
+  role: "ADMIN" | "ORGANIZER" | "PARTICIPANT";
+  participant_id: number | null;
+  can_manage: boolean;
 };
 export type Accommodation = {
   id: number;
