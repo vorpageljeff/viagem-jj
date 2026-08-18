@@ -81,14 +81,18 @@ def test_invited_participant_registers_and_joins_trip(db):
         app.dependency_overrides.clear()
 
 
-def test_registration_requires_an_invitation(db):
+def test_registration_without_invitation_creates_account(db):
     try:
         with client_for(db) as client:
             response = client.post(
                 "/api/auth/register",
                 json={"name": "Sem convite", "email": "novo@example.com", "password": "senha-segura"},
             )
-            assert response.status_code == 403
-            assert db.query(User).filter_by(email="novo@example.com").first() is None
+            assert response.status_code == 201
+            headers = {"Authorization": f"Bearer {response.json()['access_token']}"}
+            trips = client.get("/api/trips", headers=headers)
+            assert trips.status_code == 200
+            assert trips.json() == []
+            assert db.query(User).filter_by(email="novo@example.com").first() is not None
     finally:
         app.dependency_overrides.clear()

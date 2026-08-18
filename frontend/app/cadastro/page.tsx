@@ -45,7 +45,7 @@ export default function CadastroPage() {
         <div className="story-copy">
           <span className="eyebrow light">SEU ACESSO À VIAGEM</span>
           <h1>Participe das decisões do grupo.</h1>
-          <p>Use o mesmo e-mail que o organizador cadastrou na lista de participantes.</p>
+          <p>Crie sua conta para organizar uma viagem ou participar das decisões do grupo.</p>
         </div>
         <small>Seu acesso, seus votos e seus pagamentos.</small>
       </section>
@@ -57,7 +57,7 @@ export default function CadastroPage() {
           </div>
           <span className="eyebrow">CRIAR CONTA</span>
           <h2>Ative seu acesso</h2>
-          <p className="muted">Seu e-mail precisa estar na lista da viagem.</p>
+          <p className="muted">Não é necessário convite para começar.</p>
           <form onSubmit={submit}>
             <label>Nome completo<input name="name" autoComplete="name" required minLength={2} /></label>
             <label>E-mail<input name="email" type="email" autoComplete="email" required /></label>
