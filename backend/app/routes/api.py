@@ -50,9 +50,6 @@ def register(data: Register, db: Session = Depends(get_db)):
     if user_by_email(db, data.email):
         raise HTTPException(409, "E-mail já cadastrado")
     invitations = db.query(Participant).filter(func.lower(Participant.email) == data.email.lower()).all()
-    if not invitations:
-        raise HTTPException(403, "Este e-mail ainda não foi convidado para uma viagem")
-
     user = User(
         name=data.name,
         email=data.email.lower(),
